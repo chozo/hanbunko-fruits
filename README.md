@@ -29,6 +29,13 @@ npm run deploy     # ビルドして Cloudflare Workers へデプロイ
 - Vite は相対パス（`base: './'`）で `dist/hanbunko-fruits/` に出力します（`vite.config.ts`）。URL の `/hanbunko-fruits/...` が `dist/hanbunko-fruits/...` に対応します。
 - デプロイには `wrangler login` 済みであることが必要です。
 
+## ライセンス
+
+[MIT License](./LICENSE)（Copyright (c) 2026 chozo）です。改変・再配布・商用利用ができます。利用するときは、著作権表示とライセンス文を残してください。
+
+- 使っているライブラリ（Three.js など）は、それぞれのライセンスに従います。画像・音声・フォントのファイルは使っていません（形・模様・効果音はすべてコードで生成）。
+- 「ひと切り半分こ」「chozo」の名前やロゴを、作者が関わっているように見える形で使うことはご遠慮ください。
+
 ## 操作
 
 | 操作 | 内容 |
