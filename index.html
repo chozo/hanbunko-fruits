@@ -1,0 +1,110 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no" />
+    <meta name="theme-color" content="#1d1640" />
+    <meta name="description" content="立体の果物をよく見て、スワイプの一刀で体積をぴったり50:50に切り分けるゲーム。" />
+    <title>りんご、ひと切り半分こ</title>
+    <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <header id="hud">
+        <div class="hud-left">
+          <div id="stage-label">STAGE 1 / 7</div>
+          <div id="fruit-name">りんご</div>
+        </div>
+        <div id="progress" aria-label="進み具合"></div>
+        <button id="mute-btn" class="icon-btn" aria-label="音のオン・オフ" title="音のオン・オフ">
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M4 9h4l5-4v14l-5-4H4z" fill="currentColor" />
+            <path class="wave" d="M16 8.5a5 5 0 0 1 0 7M18.5 6a8.5 8.5 0 0 1 0 12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+            <path class="cross" d="M16 9l6 6M22 9l-6 6" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+          </svg>
+        </button>
+      </header>
+
+      <main id="stage">
+        <canvas id="gl"></canvas>
+        <div id="labels">
+          <div class="vol-label" id="label-a"></div>
+          <div class="vol-label" id="label-b"></div>
+        </div>
+        <div id="hint">果物の<b>外から外へ</b>スワイプして切る</div>
+        <div id="toast" role="status" aria-live="polite"></div>
+        <div id="banner"></div>
+      </main>
+
+      <section id="controls">
+        <div id="pad-wrap">
+          <div id="pad" aria-label="回転パッド：ドラッグで果物を回す">
+            <div class="pad-ring"></div>
+            <span class="arrow up"></span><span class="arrow down"></span><span class="arrow left"></span><span class="arrow right"></span>
+            <div id="pad-knob"></div>
+            <div class="pad-text">ドラッグで回転</div>
+          </div>
+        </div>
+        <div class="side-buttons">
+          <button id="reset-btn" class="sub-btn">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 12a8 8 0 1 0 2.4-5.7M4 4v4.5h4.5" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" /></svg>
+            <span>姿勢を<br />戻す</span>
+          </button>
+        </div>
+        <div id="result-card" hidden>
+          <div id="result-title">成功！</div>
+          <div id="result-ratio"><span id="ratio-a">50.0</span><span class="colon">:</span><span id="ratio-b">50.0</span></div>
+          <div id="result-error">誤差 0.0pt</div>
+          <div class="result-buttons">
+            <button id="retry-btn" class="main-btn ghost">もう一度</button>
+            <button id="next-btn" class="main-btn">次の果物へ</button>
+          </div>
+        </div>
+      </section>
+
+      <div id="title-screen" class="overlay">
+        <div class="overlay-inner">
+          <div class="title-mark">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+              <defs>
+                <radialGradient id="tg" cx="40%" cy="35%" r="70%"><stop offset="0" stop-color="#ff6b6b" /><stop offset="1" stop-color="#a3121c" /></radialGradient>
+              </defs>
+              <path d="M60 30c-10-8-34-8-38 18-4 26 14 50 30 50 4 0 6-2 8-2s4 2 8 2c16 0 34-24 30-50-4-26-28-26-38-18z" fill="url(#tg)" />
+              <path d="M60 32c0-8 2-14 6-18" stroke="#5a3a1a" stroke-width="4" fill="none" stroke-linecap="round" />
+              <path d="M18 92L104 26" stroke="#fff" stroke-width="4" stroke-linecap="round" opacity="0.95" />
+              <path d="M18 92L104 26" stroke="#9ff" stroke-width="12" stroke-linecap="round" opacity="0.3" />
+            </svg>
+          </div>
+          <h1>りんご、<br />ひと切り半分こ</h1>
+          <p class="lead">果物をよく見て、<b>体積をぴったり半分</b>に。<br />7種類の果物を一刀で切り分けよう。</p>
+          <ol class="howto">
+            <li><span class="num">1</span><span>下の<b>回転パッド</b>をドラッグして、果物を好きな向きに回す</span></li>
+            <li><span class="num">2</span><span>果物の<b>外から外へ</b>、横切るようにスワイプして切る</span></li>
+            <li><span class="num">3</span><span>体積が <b id="howto-thr">50:50 ±1.0</b> 以内なら成功。次の果物へ！</span></li>
+          </ol>
+          <button id="start-btn" class="main-btn big">はじめる</button>
+          <p class="note">音が出ます（右上のボタンで消せます）</p>
+        </div>
+      </div>
+
+      <div id="clear-screen" class="overlay" hidden>
+        <div class="overlay-inner">
+          <div class="clear-badge">ALL CLEAR</div>
+          <h2>全7種類、半分こ達成！</h2>
+          <table id="clear-table"></table>
+          <p id="clear-total"></p>
+          <button id="again-btn" class="main-btn big">最初から遊ぶ</button>
+        </div>
+      </div>
+
+      <div id="error-screen" class="overlay" hidden>
+        <div class="overlay-inner">
+          <h2>3D表示を開始できませんでした</h2>
+          <p>このブラウザでは WebGL が使えないようです。別のブラウザでお試しください。</p>
+        </div>
+      </div>
+    </div>
+    <script type="module" src="./src/main.ts"></script>
+  </body>
+</html>
