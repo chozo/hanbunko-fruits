@@ -13,13 +13,21 @@
 ```bash
 npm install
 npm run dev        # 開発サーバ（--host 付き。同じ LAN のスマホからも開ける）
-npm run build      # 型チェック（tsc）+ dist/ へビルド
+npm run build      # 型チェック（tsc）+ dist/hanbunko-fruits/ へビルド
 npm run preview    # ビルド結果の確認
 npm test           # 単体テスト（体積計算・切断・判定）
 npm run e2e -- http://localhost:5173/   # ブラウザでの動作確認（dev か preview を起動した状態で）
+npm run deploy     # ビルドして Cloudflare Workers へデプロイ
 ```
 
-`dist/` は相対パス（`base: './'`）で出力するので、どのパス配下に置いても動きます。公開先はまだ決めていません。
+## 公開
+
+- 公開 URL：**https://game.chozo.net/hanbunko-fruits/**
+- リポジトリ：https://github.com/chozo/hanbunko-fruits
+- Cloudflare Workers の静的アセット配信で公開します（Worker 名：`hanbunko-fruits`、Worker スクリプトはなし）。設定は `wrangler.jsonc` です。
+- game.chozo.net の他のゲームと同じく、`game.chozo.net/hanbunko-fruits` と `game.chozo.net/hanbunko-fruits/*` のルートだけを担当し、`workers.dev` の URL は使いません。
+- Vite は相対パス（`base: './'`）で `dist/hanbunko-fruits/` に出力します（`vite.config.ts`）。URL の `/hanbunko-fruits/...` が `dist/hanbunko-fruits/...` に対応します。
+- デプロイには `wrangler login` 済みであることが必要です。
 
 ## 操作
 

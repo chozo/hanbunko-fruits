@@ -1,12 +1,14 @@
 import { defineConfig } from 'vite';
 
-// 公開先のサブパスが決まっていないため、相対パス (base: './') で出力する。
-// どのパス配下に置いても動く。
+// 公開 URL は game.chozo.net/hanbunko-fruits/ 。
+// 相対パス (base: './') で出力し、Workers のアセット配信パスに合わせて dist/hanbunko-fruits/ に置く
+export const PUBLIC_PATH = 'hanbunko-fruits';
+
 export default defineConfig({
   base: './',
   server: { host: true },
   build: {
-    outDir: 'dist',
+    outDir: `dist/${PUBLIC_PATH}`,
     emptyOutDir: true,
     chunkSizeWarningLimit: 1200,
   },
