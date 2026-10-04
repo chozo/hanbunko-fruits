@@ -59,6 +59,16 @@ let fruit: FruitObject | null = null;
 const assetsCache = new Map<number, FruitAssets>();
 const stats = FRUITS.map(() => ({ tries: 0, best: Infinity, cleared: false }));
 let timeScale = 1;
+/** 1コマずつ進める撮影モード（告知動画用）。このとき時刻は仮想時計で進む */
+let manual = false;
+let vclock = 0;
+const nowMs = () => (manual ? vclock * 1000 : performance.now());
+/** ゲーム内時間で動くタイマー（撮影モードでも同じように進む） */
+const timers: { at: number; fn: () => void }[] = [];
+let gameTime = 0;
+function after(sec: number, fn: () => void): void {
+  timers.push({ at: gameTime + sec, fn });
+}
 let appearT = Infinity;
 let resetAnim: { from: Quaternion; t: number } | null = null;
 
@@ -79,7 +89,8 @@ let pendingCut: { S: { x: number; y: number }; E: { x: number; y: number }; fram
 let slashT = Infinity;
 let slashPts: { S: { x: number; y: number }; E: { x: number; y: number } } | null = null;
 
-const rnd = Math.random;
+// 告知動画の撮影では Math.random を固定するので、呼ぶたびに参照する
+const rnd = () => Math.random();
 
 // ---------------- ステージ ----------------
 function getAssets(i: number): FruitAssets {
@@ -329,10 +340,10 @@ function showResult(): void {
   card.hidden = false;
   nextBtn.disabled = true;
   retryBtn.disabled = true;
-  window.setTimeout(() => {
+  after(CONFIG.timing.buttonDelay, () => {
     nextBtn.disabled = false;
     retryBtn.disabled = false;
-  }, (CONFIG.timing.buttonDelay * 1000) / timeScale);
+  });
   state = 'result';
 }
 
@@ -381,21 +392,16 @@ const localPt = (e: PointerEvent): Pt => {
   return { x: e.clientX - r.left, y: e.clientY - r.top };
 };
 
-stageEl.addEventListener('pointerdown', (e) => {
-  if (state !== 'aim' || swipe || padDrag || !e.isPrimary) return;
-  if (e.button !== 0 && e.pointerType === 'mouse') return;
-  e.preventDefault();
-  sfx.unlock();
-  stageEl.setPointerCapture(e.pointerId);
-  const p = localPt(e);
-  swipe = { id: e.pointerId, pts: [{ ...p, t: performance.now() }], start: p };
+function beginSwipe(p: Pt, id: number): boolean {
+  if (state !== 'aim' || swipe || padDrag) return false;
+  swipe = { id, pts: [{ ...p, t: nowMs() }], start: p };
   sfx.swipeStart();
-});
+  return true;
+}
 
-stageEl.addEventListener('pointermove', (e) => {
-  if (!swipe || e.pointerId !== swipe.id) return;
-  const p = localPt(e);
-  const now = performance.now();
+function moveSwipe(p: Pt): void {
+  if (!swipe) return;
+  const now = nowMs();
   const last = swipe.pts[swipe.pts.length - 1];
   const dist = Math.hypot(p.x - last.x, p.y - last.y);
   if (dist < 2) return;
@@ -411,19 +417,37 @@ stageEl.addEventListener('pointermove', (e) => {
     const c = rnd() < 0.5 ? new Color(3, 2.6, 1.4) : new Color(1.4, 2.6, 3.2);
     particles.spawn(wp, v, c, 0.025 + rnd() * 0.04, 0.25 + rnd() * 0.3, 3.0, 2.5);
   }
+}
+
+function finishSwipe(p: Pt | null): boolean {
+  if (!swipe) return false;
+  const s = swipe;
+  swipe = null;
+  sfx.swipeStop();
+  guide.hide();
+  if (!p) return false;
+  // 指を離した瞬間に、始点と終点を結ぶ直線で切断を確定する
+  return trySwipeCut(s.start, p);
+}
+
+stageEl.addEventListener('pointerdown', (e) => {
+  if (manual || !e.isPrimary) return;
+  if (e.button !== 0 && e.pointerType === 'mouse') return;
+  sfx.unlock();
+  if (!beginSwipe(localPt(e), e.pointerId)) return;
+  e.preventDefault();
+  stageEl.setPointerCapture(e.pointerId);
+});
+
+stageEl.addEventListener('pointermove', (e) => {
+  if (!swipe || e.pointerId !== swipe.id) return;
+  moveSwipe(localPt(e));
 });
 
 const endSwipe = (e: PointerEvent, cancel: boolean) => {
   if (!swipe || e.pointerId !== swipe.id) return;
-  const s = swipe;
-  swipe = null;
-  sfx.swipeStop();
   if (stageEl.hasPointerCapture(e.pointerId)) stageEl.releasePointerCapture(e.pointerId);
-  guide.hide();
-  if (cancel) return;
-  const end = localPt(e);
-  // 指を離した瞬間に、始点と終点を結ぶ直線で切断を確定する
-  trySwipeCut(s.start, end);
+  finishSwipe(cancel ? null : localPt(e));
 };
 stageEl.addEventListener('pointerup', (e) => endSwipe(e, false));
 stageEl.addEventListener('pointercancel', (e) => endSwipe(e, true));
@@ -433,7 +457,7 @@ const AXIS_X = new Vector3(1, 0, 0);
 const AXIS_Y = new Vector3(0, 1, 0);
 
 padEl.addEventListener('pointerdown', (e) => {
-  if (state !== 'aim' || padDrag || swipe) return;
+  if (manual || state !== 'aim' || padDrag || swipe) return;
   e.preventDefault();
   sfx.unlock();
   padEl.setPointerCapture(e.pointerId);
@@ -446,16 +470,20 @@ padEl.addEventListener('pointermove', (e) => {
   const dx = e.clientX - padDrag.x, dy = e.clientY - padDrag.y;
   padDrag.x = e.clientX;
   padDrag.y = e.clientY;
-  if (state !== 'aim') return;
+  padRotate(dx, dy, e.clientX - padDrag.ox, e.clientY - padDrag.oy);
+});
+
+/** パッドのドラッグ量で回し、つまみを指の位置へ動かす（kx, ky はドラッグ開始点からのずれ） */
+function padRotate(dx: number, dy: number, kx: number, ky: number): void {
+  if (state !== 'aim' || !fruit) return;
   const k = CONFIG.input.rotateSensitivity;
   fruit.rotateWorld(AXIS_Y, dx * k);
   fruit.rotateWorld(AXIS_X, dy * k);
   const r = padEl.clientWidth * 0.3;
-  const kx = e.clientX - padDrag.ox, ky = e.clientY - padDrag.oy;
   const l = Math.hypot(kx, ky);
   const s = l > r ? r / l : 1;
   knobEl.style.transform = `translate(calc(-50% + ${kx * s}px), calc(-50% + ${ky * s}px))`;
-});
+}
 const endPad = (e: PointerEvent) => {
   if (!padDrag || e.pointerId !== padDrag.id) return;
   padDrag = null;
@@ -544,10 +572,22 @@ $('again-btn').addEventListener('click', () => {
 // ---------------- メインループ ----------------
 let lastTime = performance.now();
 function frame(now: number): void {
-  const rawDt = Math.min(0.05, (now - lastTime) / 1000);
   const dtMs = now - lastTime;
   lastTime = now;
+  if (!manual) tick(Math.min(0.05, dtMs / 1000), dtMs);
+  requestAnimationFrame(frame);
+}
+
+/** 1コマ分ゲームを進めて描画する（rawDt は実時間の秒、dtMs は解像度の自動調整用） */
+function tick(rawDt: number, dtMs: number): void {
   const dt = rawDt * timeScale;
+  gameTime += dt;
+  for (let i = timers.length - 1; i >= 0; i--) {
+    if (timers[i].at <= gameTime) {
+      const t = timers.splice(i, 1)[0];
+      t.fn();
+    }
+  }
 
   if (pendingCut) {
     // 1 フレーム目：光った斬撃だけを描く。2 フレーム目で実際に切る
@@ -576,7 +616,7 @@ function frame(now: number): void {
 
   // 刃の軌跡
   if (swipe) {
-    const tn = performance.now();
+    const tn = nowMs();
     const life = CONFIG.fx.trailLife * 1000;
     const keep = Math.max(0, swipe.pts.length - 6);
     const pts = swipe.pts.filter((p, i) => tn - p.t < life || i >= keep);
@@ -620,7 +660,6 @@ function frame(now: number): void {
   particles.update(dt);
   for (const r of rings) r.update(dt);
   view.render(dtMs);
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
 
@@ -667,6 +706,36 @@ window.__game = {
   },
   /** 直近の切断を、独立した計算（ワールド座標で三角形を切り取る）で検算する */
   verify: () => (run && fruit ? worldVolumeCheck(fruit, run.outcome, run.first, run.S, run.E, view) : null),
+  // ---- 告知動画の撮影用 ----
+  /** 1コマずつ進める撮影モードに切り替え、効果音の記録を始める */
+  manual: (on: boolean) => {
+    manual = on;
+    vclock = 0;
+    if (on) sfx.startRecording(() => vclock);
+  },
+  /** 撮影モードで dtSec 秒進めて描画する */
+  step: (dtSec: number) => {
+    vclock += dtSec;
+    tick(dtSec, 0);
+  },
+  /** 表示領域の CSS px 座標で指を置く・動かす・離す（本物のスワイプと同じ処理） */
+  touchDown: (x: number, y: number) => beginSwipe({ x, y }, 1),
+  touchMove: (x: number, y: number) => moveSwipe({ x, y }),
+  touchUp: (x: number, y: number) => finishSwipe({ x, y }),
+  /** 回転パッドのドラッグ（dx, dy は今回の移動量、kx, ky はつまみの位置） */
+  pad: (dx: number, dy: number, kx: number, ky: number) => {
+    padEl.classList.add('active');
+    padRotate(dx, dy, kx, ky);
+  },
+  padRelease: () => {
+    padEl.classList.remove('active');
+    knobEl.style.transform = '';
+  },
+  /** 切らずに、その線で切ったときの「片側 % − 50」を返す（符号は線の向きで決まる） */
+  preview: (x0: number, y0: number, x1: number, y1: number) => (fruit ? fruit.previewPercent(planeFromSwipe({ x: x0, y: y0 }, { x: x1, y: y1 })) - 50 : NaN),
+  /** 記録した効果音を、渡された AudioContext に鳴らし直す */
+  replaySfx: (ctx: BaseAudioContext, out: AudioNode) => sfx.replay(ctx, out, sfx.events),
+  sfxEvents: () => sfx.events.length,
   /** 切ったかけら同士の最小すき間（正なら完全に分離） */
   separation: () => fruit?.separation() ?? null,
   stats: () => stats.map((s) => ({ ...s })),

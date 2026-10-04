@@ -29,6 +29,23 @@ npm run deploy     # ビルドして Cloudflare Workers へデプロイ
 - Vite は相対パス（`base: './'`）で `dist/hanbunko-fruits/` に出力します（`vite.config.ts`）。URL の `/hanbunko-fruits/...` が `dist/hanbunko-fruits/...` に対応します。
 - デプロイには `wrangler login` 済みであることが必要です。
 
+## 告知動画
+
+スマホのショート動画向けの告知動画（縦 1080×1920 / 30fps / 約30秒 / H.264 + AAC、音量は -14 LUFS）を作れます。動画はリポジトリに含めず、アプリのフォルダの隣の `../video/` に出力します。
+
+```bash
+npm run dev                                  # 別のターミナルで開発サーバを起動しておく
+npm run promo -- http://localhost:5173/      # ../video/hanbunko-fruits-promo.mp4 と表紙 ../video/hanbunko-fruits-promo-cover.jpg
+PROMO_EVERY=15 npm run promo                 # 確認用：15 コマごとの静止画だけを ../video/work/frames/ に撮る（数十秒）
+```
+
+- `tools/promo/scenario.js`：台本です。確認用の入口（`window.__game`）で、ゲームを1コマずつ進め（実時間で録画しないのでコマ落ちしません）、本物のスワイプ・回転パッドの操作を再現します。乱数を固定しているので、毎回同じ動画になります。
+  - 切る位置は、切る前に「切らずに体積比を測る」フック（`__game.preview`）で探し、成功（誤差 0.1〜0.2%）や惜しい失敗（2.6%）を狙って作っています。
+  - 構成：つかみ（ぶどう一房が紫に光ってぴったり半分）→ タイトル → 回転パッドで観察 → スワイプして惜しい失敗 → 同じ角度から再挑戦して成功 → 倍速で柿・パイナップル・桃・バナナ・さくらんぼ → スイカをスローで → エンドカード（ロゴ・URL）。
+- `tools/promo/promo.css`：撮影用の見た目です。ショート動画アプリのボタンや説明文が重なる下・右・上端を避け、ゲーム画面と字幕を中央寄りに置いています。
+- `tools/promo/record.mjs`：インストール済みの Chrome をヘッドレスで動かして1コマずつ撮影し、記録した効果音と合成したリズム（自作）を OfflineAudioContext で WAV に書き出して、ffmpeg（`ffmpeg-static`）で MP4 にまとめます。表紙は最後の場面です。
+- 出力先は環境変数 `PROMO_OUT_DIR` で変えられます。
+
 ## ライセンス
 
 [MIT License](./LICENSE)（Copyright (c) 2026 chozo）です。改変・再配布・商用利用ができます。利用するときは、著作権表示とライセンス文を残してください。
@@ -131,6 +148,7 @@ src/audio.ts          効果音の合成
 tests/                単体テスト（vitest）
 tools/e2e.mjs         ブラウザでの動作確認（playwright-core + インストール済みの Chrome）
 tools/shot.mjs        開発用のスクリーンショット撮影
+tools/promo/          告知動画の台本・撮影・書き出し（出力は ../video/）
 wrangler.jsonc        Cloudflare Workers の公開設定
 LICENSE               MIT License
 ```
@@ -147,6 +165,7 @@ LICENSE               MIT License
 | 照明 | Three.js の RoomEnvironment + ライト | ツヤと立体感 |
 | 光の演出 | シェーダー（加算合成）+ ブルーム | 刃の軌跡、斬撃、断面の発光、粒子、光の輪 |
 | 効果音 | Web Audio API で合成 | 風切り音、切断音（果物ごと）、成功・失敗、UI |
+| 告知動画の音楽 | Web Audio API で合成（`tools/promo/scenario.js`） | 告知動画のリズム。既存の楽曲は使っていない |
 | アイコン | `public/favicon.svg`（包丁） | ブラウザのタブ |
 
 - 音は最初のユーザー操作（「はじめる」など）で有効になります。AudioContext が使えない環境でも、音なしでそのまま遊べます。localStorage が使えない場合はミュート設定を保存しないだけです。

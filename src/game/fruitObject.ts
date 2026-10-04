@@ -159,6 +159,14 @@ export class FruitObject {
     return { grid, gw, gh, cell };
   }
 
+  /** 切らずに、平面の法線側にある体積の割合（%）だけを求める */
+  previewPercent(worldPlane: Plane): number {
+    this.root.updateMatrixWorld(true);
+    const lp = worldPlane.clone().applyMatrix4(this.body.matrixWorld.clone().invert());
+    const r = cutMesh(this.assets.model.body, { n: [lp.normal.x, lp.normal.y, lp.normal.z], c: lp.constant }, false);
+    return (r.pos.volume / this.assets.totalVolume) * 100;
+  }
+
   /** ワールド空間の平面で実際に切る */
   cut(worldPlane: Plane, view: View): CutOutcome {
     const def = this.assets.def;

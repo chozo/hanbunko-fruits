@@ -5,13 +5,61 @@ import type { Sound } from './fruits/common';
 
 const MUTE_KEY = 'hanbunko-muted';
 
+/** 告知動画用に記録した効果音（時刻は秒） */
+export interface SfxEvent {
+  name: string;
+  args: unknown[];
+  t: number;
+}
+
 export class Sfx {
-  private ctx: AudioContext | null = null;
+  private ctx: BaseAudioContext | null = null;
   private master: GainNode | null = null;
   private noise: AudioBuffer | null = null;
   private swipe: { src: AudioBufferSourceNode; filter: BiquadFilterNode; gain: GainNode } | null = null;
   muted = false;
   failed = false;
+  /** 記録中は、鳴らした効果音を時刻つきで残す（告知動画の音声を後で書き出すため） */
+  private recClock: (() => number) | null = null;
+  events: SfxEvent[] = [];
+  /** 書き出し中は、各効果音をこの時刻に鳴らす */
+  private tOverride: number | null = null;
+
+  startRecording(clock: () => number): void {
+    this.events = [];
+    this.recClock = clock;
+  }
+
+  private rec(name: string, args: unknown[] = []): void {
+    if (this.recClock && this.tOverride === null) this.events.push({ name, args, t: this.recClock() });
+  }
+
+  private now(): number {
+    return this.tOverride ?? this.ctx?.currentTime ?? 0;
+  }
+
+  /** 記録した効果音を、別の AudioContext（OfflineAudioContext など）に同じ合成方法で鳴らし直す */
+  replay(ctx: BaseAudioContext, out: AudioNode, events: SfxEvent[]): void {
+    const saved = { ctx: this.ctx, master: this.master, noise: this.noise, muted: this.muted, swipe: this.swipe };
+    this.ctx = ctx;
+    const master = ctx.createGain();
+    master.gain.value = CONFIG.audio.masterVolume;
+    master.connect(out);
+    this.master = master;
+    const len = ctx.sampleRate;
+    this.noise = ctx.createBuffer(1, len, ctx.sampleRate);
+    const d = this.noise.getChannelData(0);
+    for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+    this.muted = false;
+    this.swipe = null;
+    const self = this as unknown as Record<string, (...a: unknown[]) => void>;
+    for (const e of events) {
+      this.tOverride = e.t;
+      self[e.name]?.(...e.args);
+    }
+    this.tOverride = null;
+    Object.assign(this, saved);
+  }
 
   constructor() {
     try {
@@ -40,7 +88,7 @@ export class Sfx {
         const d = this.noise.getChannelData(0);
         for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
       }
-      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+      if (this.ctx.state === 'suspended') void (this.ctx as AudioContext).resume().catch(() => {});
     } catch (e) {
       console.warn('[audio] disabled:', e);
       this.failed = true;
@@ -55,10 +103,10 @@ export class Sfx {
     } catch {
       /* noop */
     }
-    if (this.ctx && this.master) this.master.gain.setTargetAtTime(m ? 0 : CONFIG.audio.masterVolume, this.ctx.currentTime, 0.02);
+    if (this.ctx && this.master) this.master.gain.setTargetAtTime(m ? 0 : CONFIG.audio.masterVolume, this.now(), 0.02);
   }
 
-  private safe(fn: (ctx: AudioContext, out: GainNode) => void): void {
+  private safe(fn: (ctx: BaseAudioContext, out: GainNode) => void): void {
     if (!this.ctx || !this.master || this.muted) return;
     try {
       fn(this.ctx, this.master);
@@ -67,7 +115,7 @@ export class Sfx {
     }
   }
 
-  private tone(ctx: AudioContext, out: AudioNode, type: OscillatorType, freq: number, t0: number, dur: number, vol: number, endFreq?: number): void {
+  private tone(ctx: BaseAudioContext, out: AudioNode, type: OscillatorType, freq: number, t0: number, dur: number, vol: number, endFreq?: number): void {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
     o.type = type;
@@ -81,7 +129,7 @@ export class Sfx {
     o.stop(t0 + dur + 0.02);
   }
 
-  private burst(ctx: AudioContext, out: AudioNode, t0: number, dur: number, vol: number, type: BiquadFilterType, freq: number, q = 1): void {
+  private burst(ctx: BaseAudioContext, out: AudioNode, t0: number, dur: number, vol: number, type: BiquadFilterType, freq: number, q = 1): void {
     const s = ctx.createBufferSource();
     s.buffer = this.noise;
     s.playbackRate.value = 0.8 + Math.random() * 0.4;
@@ -99,6 +147,7 @@ export class Sfx {
   }
 
   swipeStart(): void {
+    this.rec('swipeStart', []);
     this.safe((ctx, out) => {
       this.swipeStop();
       const src = ctx.createBufferSource();
@@ -111,27 +160,29 @@ export class Sfx {
       const gain = ctx.createGain();
       gain.gain.value = 0;
       src.connect(filter).connect(gain).connect(out);
-      src.start();
+      src.start(this.now());
       this.swipe = { src, filter, gain };
     });
   }
 
   /** speed: CSS px / 秒 */
   swipeMove(speed: number): void {
+    this.rec('swipeMove', [speed]);
     if (!this.swipe || !this.ctx) return;
     const k = Math.min(1, speed / 2500);
-    const t = this.ctx.currentTime;
+    const t = this.now();
     this.swipe.filter.frequency.setTargetAtTime(900 + 4200 * k, t, 0.03);
     this.swipe.gain.gain.setTargetAtTime(0.22 * k, t, 0.03);
   }
 
   swipeStop(): void {
+    this.rec('swipeStop', []);
     if (!this.swipe || !this.ctx) return;
     const s = this.swipe;
     this.swipe = null;
     try {
-      s.gain.gain.setTargetAtTime(0, this.ctx.currentTime, 0.02);
-      s.src.stop(this.ctx.currentTime + 0.15);
+      s.gain.gain.setTargetAtTime(0, this.now(), 0.02);
+      s.src.stop(this.now() + 0.15);
     } catch {
       /* noop */
     }
@@ -139,8 +190,9 @@ export class Sfx {
 
   /** 「シャキン」＋果物ごとの「サクッ」 */
   cut(kind: Sound): void {
+    this.rec('cut', [kind]);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime + 0.005;
+      const t = this.now() + 0.005;
       // シャッ（高域ノイズ）
       this.burst(ctx, out, t, 0.16, 0.55, 'highpass', 5200, 0.7);
       // キン（金属的な非整数倍音）
@@ -170,8 +222,9 @@ export class Sfx {
   }
 
   success(): void {
+    this.rec('success', []);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime + 0.02;
+      const t = this.now() + 0.02;
       [1046.5, 1318.5, 1568, 2093].forEach((f, i) => {
         this.tone(ctx, out, 'triangle', f, t + i * 0.075, 0.55, 0.16);
         this.tone(ctx, out, 'sine', f * 2, t + i * 0.075, 0.3, 0.04);
@@ -181,35 +234,40 @@ export class Sfx {
   }
 
   fail(): void {
+    this.rec('fail', []);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime + 0.02;
+      const t = this.now() + 0.02;
       this.tone(ctx, out, 'triangle', 392, t, 0.22, 0.16);
       this.tone(ctx, out, 'triangle', 311, t + 0.18, 0.35, 0.14);
     });
   }
 
   reject(): void {
+    this.rec('reject', []);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime;
+      const t = this.now();
       this.tone(ctx, out, 'sine', 420, t, 0.12, 0.08, 260);
     });
   }
 
   click(): void {
-    this.safe((ctx, out) => this.tone(ctx, out, 'sine', 1400, ctx.currentTime, 0.06, 0.08, 900));
+    this.rec('click', []);
+    this.safe((ctx, out) => this.tone(ctx, out, 'sine', 1400, this.now(), 0.06, 0.08, 900));
   }
 
   appear(): void {
+    this.rec('appear', []);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime;
+      const t = this.now();
       this.tone(ctx, out, 'sine', 660, t, 0.18, 0.08, 1320);
       this.tone(ctx, out, 'triangle', 990, t + 0.06, 0.2, 0.05);
     });
   }
 
   fanfare(): void {
+    this.rec('fanfare', []);
     this.safe((ctx, out) => {
-      const t = ctx.currentTime + 0.02;
+      const t = this.now() + 0.02;
       const seq: [number, number, number][] = [
         [784, 0, 0.18], [784, 0.16, 0.12], [784, 0.28, 0.12], [1046.5, 0.42, 0.7],
         [1318.5, 0.42, 0.7], [1568, 0.42, 0.7], [2093, 0.62, 0.6],

@@ -1,0 +1,57 @@
+/* 告知動画の撮影用の見た目（540x960 を 2 倍で撮る）。
+   ショート動画アプリは画面の下（約20%）・右（約15%）・上端に表示が重なるので、
+   ゲーム画面と字幕は中央寄りに置く。 */
+*, *::before, *::after { animation: none !important; transition: none !important; }
+html, body {
+  background-color: #0d0820 !important;
+  background-image:
+    radial-gradient(circle at 20% 18%, rgba(255, 90, 120, 0.35), transparent 32%),
+    radial-gradient(circle at 85% 30%, rgba(120, 200, 255, 0.28), transparent 30%),
+    radial-gradient(circle at 30% 85%, rgba(255, 200, 60, 0.25), transparent 34%),
+    radial-gradient(circle at 75% 78%, rgba(170, 90, 255, 0.32), transparent 34%) !important;
+}
+#app {
+  position: fixed !important;
+  left: 86px !important; top: 150px !important;
+  width: 340px !important; height: 604px !important;
+  margin: 0 !important;
+  border-radius: 26px;
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.85), 0 0 40px rgba(160, 200, 255, 0.55), 0 18px 40px rgba(0, 0, 0, 0.5);
+  transform-origin: 50% 45%;
+}
+#controls { height: 180px !important; }
+#banner, #toast, #title-screen { display: none !important; }
+
+#promo { position: fixed; inset: 0; pointer-events: none; z-index: 1000;
+  font-family: 'Hiragino Sans', 'Hiragino Kaku Gothic ProN', 'Noto Sans JP', sans-serif; }
+#promo .cap { position: absolute; text-align: center; font-weight: 900; font-size: 40px; line-height: 1.15;
+  color: #fff; -webkit-text-stroke: 9px #2a1050; paint-order: stroke fill; white-space: nowrap;
+  filter: drop-shadow(0 4px 0 rgba(20, 0, 40, 0.5)); display: none; }
+#promo .cap .hl { color: #ffd84a; }
+#promo .cap .pk { color: #ff7aa8; }
+#promo .cap.small { font-size: 28px; -webkit-text-stroke: 7px #2a1050; }
+#promo .sfx { font-size: 54px; color: #fff36a; -webkit-text-stroke: 10px #c2185b;
+  filter: drop-shadow(0 0 12px rgba(255, 255, 255, 0.8)); font-style: italic; }
+#promo .sfx.big { font-size: 74px; }
+#promo .sfx.blue { color: #b9f6ff; -webkit-text-stroke: 10px #1a3fa0; }
+#promo .sfx.soft { font-size: 40px; color: #c9c2e8; -webkit-text-stroke: 8px #2a1050; filter: none; font-style: normal; }
+#promo .flash { position: absolute; inset: 0; background: #fff; opacity: 0; }
+#promo .ff { position: absolute; top: 166px; left: 370px; font-weight: 900; font-size: 20px; color: #fff;
+  background: rgba(255, 60, 120, 0.9); padding: 4px 12px; border-radius: 999px; display: none;
+  box-shadow: 0 0 14px rgba(255, 60, 120, 0.8); }
+#promo .finger { position: absolute; width: 46px; height: 46px; margin: -23px 0 0 -23px; border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.95) 0 30%, rgba(255,255,255,0.35) 31% 60%, transparent 61%);
+  box-shadow: 0 0 18px rgba(255, 255, 255, 0.9); display: none; }
+#promo .endbg { position: absolute; inset: 0; opacity: 0;
+  background: radial-gradient(circle at 50% 42%, rgba(60, 20, 120, 0.82), rgba(8, 4, 24, 0.94) 70%); }
+#promo .endlogo { line-height: 1; }
+#promo .endlogo .logo1 { display: block; font-size: 66px; color: #fff; -webkit-text-stroke: 12px #c2185b; }
+#promo .endlogo .logo2 { display: block; font-size: 34px; color: #ffd84a; -webkit-text-stroke: 8px #2a1050; margin-top: 14px;
+  letter-spacing: 0.12em; }
+#promo .endsub { font-size: 30px; -webkit-text-stroke: 8px #2a1050; }
+#promo .endurl { font-size: 23px; color: #3a2300; -webkit-text-stroke: 0; background: linear-gradient(#ffe27a, #ffb931);
+  padding: 12px 22px; border-radius: 999px; box-shadow: 0 5px 0 #b9780f, 0 0 26px rgba(255, 200, 80, 0.6); filter: none;
+  font-style: normal; }
+#promo .endtag { font-size: 24px; color: #fff; -webkit-text-stroke: 6px #2a1050; }
+/* エンドカードは文字が読みやすいよう、背景のゲーム画面を完全に隠す */
+#promo .endbg.solid { background: radial-gradient(circle at 50% 42%, #3c1478, #0b0620 72%); }
