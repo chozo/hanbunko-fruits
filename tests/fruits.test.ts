@@ -43,12 +43,12 @@ describe.each(FRUITS.map((f) => [f.name, f] as const))('%s', (_name, def) => {
       worstCons = Math.max(worstCons, Math.abs(res.pos.volume + res.neg.volume - V) / V);
       worstCap = Math.max(worstCap, Math.abs(closedVolume(res.pos) - res.pos.volume) / V, Math.abs(closedVolume(res.neg) - res.neg.volume) / V);
     }
-    // 保存誤差・断面の閉じ具合とも 0.001pt 未満
+    // 保存誤差・断面の閉じ具合とも 0.001% 未満
     expect(worstCons * 100).toBeLessThan(1e-3);
     expect(worstCap * 100).toBeLessThan(1e-3);
   });
 
-  it('メッシュを2倍細かくしても体積比の差は 0.1pt 未満（1pt判定に十分な精度）', () => {
+  it('メッシュを2倍細かくしても体積比の差は 0.1% 未満（1%判定に十分な精度）', () => {
     const fine = def.build(2);
     const Vf = signedVolume(fine.body);
     let worst = 0;
@@ -57,7 +57,7 @@ describe.each(FRUITS.map((f) => [f.name, f] as const))('%s', (_name, def) => {
       const b = (cutMesh(fine.body, pl, false).pos.volume / Vf) * 100;
       worst = Math.max(worst, Math.abs(a - b));
     }
-    console.log(`${def.name}: 解像度による体積比の最大差 ${worst.toFixed(4)}pt`);
+    console.log(`${def.name}: 解像度による体積比の最大差 ${worst.toFixed(4)}%`);
     expect(worst).toBeLessThan(0.1);
   });
 });

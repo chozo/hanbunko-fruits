@@ -61,7 +61,7 @@ export function worldVolumeCheck(
   return {
     fracFirstGame,
     fracFirstIndependent,
-    diffPt: Math.abs(fracFirstGame - fracFirstIndependent),
+    diffPercent: Math.abs(fracFirstGame - fracFirstIndependent),
     conservation: Math.abs(o.volumePos + o.volumeNeg - o.totalVolume) / o.totalVolume,
     totalWorldVsLocal: volAll / (o.totalVolume * M.getMaxScaleOnAxis() ** 3),
     capLoops: o.result.loopCount,

@@ -8,8 +8,8 @@ export interface Judgement {
   percentB: number;
   displayA: string;
   displayB: string;
-  /** 丸めた値から求めた誤差（パーセントポイント） */
-  errorPt: number;
+  /** 丸めた値から求めた誤差（%） */
+  errorPercent: number;
   errorDisplay: string;
   success: boolean;
 }
@@ -22,21 +22,21 @@ export interface Judgement {
 export function judgeVolumes(
   volumeA: number,
   totalVolume: number,
-  cfg: { thresholdPt: number; displayDecimals: number } = CONFIG.judge,
+  cfg: { thresholdPercent: number; displayDecimals: number } = CONFIG.judge,
 ): Judgement {
   const raw = totalVolume > 0 ? (volumeA / totalVolume) * 100 : 0;
   const f = 10 ** cfg.displayDecimals;
   const unitsA = Math.min(100 * f, Math.max(0, Math.round(raw * f)));
   const unitsB = 100 * f - unitsA;
   const errUnits = Math.abs(unitsA - 50 * f);
-  const thrUnits = Math.round(cfg.thresholdPt * f);
+  const thrUnits = Math.round(cfg.thresholdPercent * f);
   return {
     rawPercentA: raw,
     percentA: unitsA / f,
     percentB: unitsB / f,
     displayA: (unitsA / f).toFixed(cfg.displayDecimals),
     displayB: (unitsB / f).toFixed(cfg.displayDecimals),
-    errorPt: errUnits / f,
+    errorPercent: errUnits / f,
     errorDisplay: (errUnits / f).toFixed(cfg.displayDecimals),
     success: errUnits <= thrUnits,
   };

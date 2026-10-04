@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { judgeVolumes } from '../src/judge';
 
-const cfg = { thresholdPt: 1.0, displayDecimals: 1 };
+const cfg = { thresholdPercent: 1.0, displayDecimals: 1 };
 const j = (pct: number) => judgeVolumes(pct, 100, cfg);
 
-describe('成功判定（しきい値 1pt）', () => {
+describe('成功判定（しきい値 1%）', () => {
   it('仕様の例', () => {
     expect(j(50).success).toBe(true);
     expect(j(49).success).toBe(true);
@@ -17,7 +17,7 @@ describe('成功判定（しきい値 1pt）', () => {
     for (let p = 0; p <= 100; p += 0.0137) {
       const r = j(p);
       expect(r.percentA + r.percentB).toBeCloseTo(100, 9);
-      expect(r.errorPt).toBeCloseTo(Math.abs(r.percentA - 50), 9);
+      expect(r.errorPercent).toBeCloseTo(Math.abs(r.percentA - 50), 9);
     }
   });
 
@@ -40,10 +40,10 @@ describe('成功判定（しきい値 1pt）', () => {
   });
 
   it('しきい値は設定で変えられる', () => {
-    expect(judgeVolumes(48, 100, { thresholdPt: 2, displayDecimals: 1 }).success).toBe(true);
-    expect(judgeVolumes(49.5, 100, { thresholdPt: 0.5, displayDecimals: 1 }).success).toBe(true);
-    expect(judgeVolumes(49.4, 100, { thresholdPt: 0.5, displayDecimals: 1 }).success).toBe(false);
-    expect(judgeVolumes(49.06, 100, { thresholdPt: 1, displayDecimals: 2 }).success).toBe(true);
-    expect(judgeVolumes(48.99, 100, { thresholdPt: 1, displayDecimals: 2 }).success).toBe(false);
+    expect(judgeVolumes(48, 100, { thresholdPercent: 2, displayDecimals: 1 }).success).toBe(true);
+    expect(judgeVolumes(49.5, 100, { thresholdPercent: 0.5, displayDecimals: 1 }).success).toBe(true);
+    expect(judgeVolumes(49.4, 100, { thresholdPercent: 0.5, displayDecimals: 1 }).success).toBe(false);
+    expect(judgeVolumes(49.06, 100, { thresholdPercent: 1, displayDecimals: 2 }).success).toBe(true);
+    expect(judgeVolumes(48.99, 100, { thresholdPercent: 1, displayDecimals: 2 }).success).toBe(false);
   });
 });

@@ -31,7 +31,7 @@ const sfx = new Sfx();
 muteBtn.classList.toggle('muted', sfx.muted);
 $('fruit-count').textContent = String(FRUITS.length);
 $('clear-count').textContent = String(FRUITS.length);
-$('howto-thr').textContent = `50:50 ±${CONFIG.judge.thresholdPt.toFixed(CONFIG.judge.displayDecimals)}pt`;
+$('howto-thr').textContent = `50:50 ±${CONFIG.judge.thresholdPercent.toFixed(CONFIG.judge.displayDecimals)}%`;
 
 let view: View;
 try {
@@ -230,7 +230,7 @@ function doCut(S: Pt, E: Pt): void {
   const judgement = judgeVolumes(volFirst, outcome.totalVolume);
   const st = stats[stageIndex];
   st.tries++;
-  st.best = Math.min(st.best, judgement.errorPt);
+  st.best = Math.min(st.best, judgement.errorPercent);
   run = {
     outcome,
     judgement,
@@ -305,7 +305,7 @@ function showResult(): void {
   placeLabels();
   $('ratio-a').textContent = j.displayA;
   $('ratio-b').textContent = j.displayB;
-  $('result-error').textContent = `誤差 ${j.errorDisplay}pt（±${CONFIG.judge.thresholdPt.toFixed(CONFIG.judge.displayDecimals)}pt 以内で成功）`;
+  $('result-error').textContent = `誤差 ${j.errorDisplay}%（±${CONFIG.judge.thresholdPercent.toFixed(CONFIG.judge.displayDecimals)}% 以内で成功）`;
   card.classList.toggle('success', j.success);
   card.classList.toggle('fail', !j.success);
   const last = stageIndex === FRUITS.length - 1;
@@ -320,7 +320,7 @@ function showResult(): void {
     celebrate(def.palette);
     updateHud();
   } else {
-    $('result-title').textContent = j.errorPt <= 3 ? 'おしい！' : 'ざんねん…';
+    $('result-title').textContent = j.errorPercent <= 3 ? 'おしい！' : 'ざんねん…';
     nextBtn.hidden = true;
     retryBtn.hidden = false;
     retryBtn.textContent = 'もう一度';
@@ -525,7 +525,7 @@ function showClear(): void {
   FRUITS.forEach((f, i) => {
     total += stats[i].tries;
     const tr = document.createElement('tr');
-    tr.innerHTML = `<td>${f.name}</td><td>${stats[i].tries}回</td><td>${stats[i].best.toFixed(CONFIG.judge.displayDecimals)}pt</td>`;
+    tr.innerHTML = `<td>${f.name}</td><td>${stats[i].tries}回</td><td>${stats[i].best.toFixed(CONFIG.judge.displayDecimals)}%</td>`;
     table.appendChild(tr);
   });
   $('clear-total').textContent = `合計 ${total} 回の挑戦でクリア`;
