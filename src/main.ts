@@ -97,12 +97,14 @@ function clearFruit(): void {
   fruit = null;
 }
 
-function loadStage(i: number): void {
+/** pose を渡すと、その姿勢で表示する（再挑戦では切ったときの角度を引き継ぐ） */
+function loadStage(i: number, pose?: Quaternion): void {
   clearFruit();
   run = null;
   pendingCut = null;
   stageIndex = i;
   fruit = new FruitObject(getAssets(i));
+  if (pose) fruit.root.quaternion.copy(pose);
   view.scene.add(fruit.root);
   // 次のステージを先に用意しておく（形状生成の待ち時間を隠す）
   if (i + 1 < FRUITS.length) setTimeout(() => getAssets(i + 1), 400);
@@ -508,7 +510,8 @@ nextBtn.addEventListener('click', () => {
 retryBtn.addEventListener('click', () => {
   if (state !== 'result') return;
   sfx.click();
-  loadStage(stageIndex);
+  // 切る前のオブジェクトの姿勢は切断時のまま残っているので、それを引き継ぐ
+  loadStage(stageIndex, fruit?.root.quaternion.clone());
 });
 
 function showClear(): void {

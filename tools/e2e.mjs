@@ -60,6 +60,7 @@ const g = (page, expr) => page.evaluate(expr);
   check('果物を横切らないスワイプでは切れない', (await g(page, '__game.state')) === 'aim');
   // 回転してから実際のマウス操作で切る
   await drag(page, cx, cy, cx + 60, cy + 70);
+  const qCut = await g(page, '__game.quaternion()');
   await drag(page, st.x + 5, st.y + 200, st.x + 385, st.y + 380, 16);
   await wait(page, 300);
   check('果物を横切るスワイプで切れる', ['cutting', 'result'].includes(await g(page, '__game.state')));
@@ -76,6 +77,12 @@ const g = (page, expr) => page.evaluate(expr);
     await page.click('#retry-btn');
     await wait(page, 800);
     check('失敗後の再挑戦で同じ果物に戻る', (await g(page, '__game.state')) === 'aim' && (await g(page, '__game.stage')) === 0);
+    const qRetry = await g(page, '__game.quaternion()');
+    check('再挑戦では切ったときの角度で表示される', Math.abs(qRetry.reduce((s, v, i) => s + v * qCut[i], 0)) > 0.99999);
+    await page.click('#reset-btn');
+    await wait(page, 1500);
+    const qr2 = await g(page, '__game.quaternion()');
+    check('再挑戦後も「姿勢を戻す」で初期姿勢に戻る', Math.abs(qr2.reduce((s, v, i) => s + v * q0[i], 0)) > 0.99999);
   }
   await page.close();
 }
