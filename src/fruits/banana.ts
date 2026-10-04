@@ -6,15 +6,15 @@ import { clamp01, fbm, mix, smooth, type FruitDef } from './common';
 // 中心線は xy 平面上の円弧（中心 O=(0, RC)）。断面は円弧に垂直な平面上にあるので、
 // 任意の点から「円弧上の位置」と「断面内の位置」を逆算でき、断面の模様が形と一致する。
 
-const RC = 1.75;
-const A0 = -0.66; // 柄の側
-const A1 = 0.62; // 先端側
-const RMAX = 0.24;
+const RC = 1.32;
+const A0 = -0.86; // 柄の側
+const A1 = 0.82; // 先端側
+const RMAX = 0.2;
 
 function profile(u: number): number {
   // 中央が太く、両端が丸く閉じる。柄の側は細くくびれる
   const body = Math.sqrt(Math.max(0, 1 - Math.abs(2 * u - 1) ** 6));
-  const neck = 0.5 + 0.5 * smooth(0.0, 0.3, u);
+  const neck = 0.32 + 0.68 * smooth(0.0, 0.42, u); // 柄の側へ長くすぼまる
   const tipBulge = 1 + 0.06 * Math.exp(-(((u - 0.7) / 0.2) ** 2));
   return RMAX * body * neck * tipBulge;
 }
@@ -96,19 +96,27 @@ function buildOne(q: number, greenish: number): MeshData {
 /** 房の付け根（クラウン）の局所座標。各バナナの柄をのばした先にある */
 const S0 = frame(A0).c;
 const STALK: Vec3 = [-Math.cos(A0), -Math.sin(A0), 0];
-const LS = 0.65;
+const LS = 0.32;
 const CROWN: Vec3 = [S0[0] + STALK[0] * LS, S0[1] + STALK[1] * LS, 0];
 
-/** 5本の配置：クラウンを通る縦軸のまわりに扇形に回し、高さを互い違いにずらす */
+/**
+ * 5本の配置：外側の列に3本、その内側（反りの内側＝上）に2本が重なる。
+ * どれも同じ向きに反り、柄の側はクラウン（房の付け根）に集まる。
+ * クラウンを通る縦軸のまわりに少しずつ開き、内側の列は外側の列のすき間の上に乗る。
+ */
 export function bunchLayout() {
-  const theta = [-1.00, -0.50, 0, 0.50, 1.00];
-  const lift = [-0.1, 0.1, -0.1, 0.1, -0.1];
-  const size = [0.94, 0.98, 1.0, 0.97, 0.93];
-  const tilt = [0.05, -0.02, 0, 0.03, -0.05];
-  return theta.map((t, k) => {
-    const m = mul3(rotY3(t), mul3(rotZ3(tilt[k]), scale3(size[k], size[k], size[k])));
+  // [列内の横位置, 開き角, 持ち上げ, 大きさ, 傾き]
+  const spec: [number, number, number, number, number][] = [
+    [-0.31, 0.12, 0, 0.98, 0.02], // 外側の列（rotY の正の角度で -z 側へ開く）
+    [0, 0, 0, 1.0, 0],
+    [0.31, -0.12, 0, 0.97, -0.02],
+    [-0.155, 0.06, 0.5, 0.93, -0.06], // 内側の列
+    [0.155, -0.06, 0.5, 0.92, -0.05],
+  ];
+  return spec.map(([side, yaw, lift, size, tilt]) => {
+    const m = mul3(rotY3(yaw), mul3(rotZ3(tilt), scale3(size, size, size)));
     const inv = invert3(m);
-    const off: Vec3 = [0, lift[k], 0];
+    const off: Vec3 = [0, lift, side];
     const toWorld = (p: Vec3): Vec3 => {
       const x = p[0] - CROWN[0], y = p[1] - CROWN[1], z = p[2] - CROWN[2];
       return [m[0] * x + m[1] * y + m[2] * z + off[0], m[3] * x + m[4] * y + m[5] * z + off[1], m[6] * x + m[7] * y + m[8] * z + off[2]];
@@ -149,7 +157,7 @@ export const banana: FruitDef = {
   capRoughness: 0.45,
   glow: 0xfff070,
   palette: [0xffe14a, 0xfff6c0, 0xffb84a, 0x9ad04a],
-  initialRotation: [0.55, -0.6, 0.1],
+  initialRotation: [0.5, -0.8, 0],
   sound: 'soft',
   build(q = 1) {
     const layout = bunchLayout();
@@ -170,10 +178,17 @@ export const banana: FruitDef = {
       );
       stalks.push(transformMesh(st, L.m, shift));
     });
-    stalks.push(buildTube((t) => [0.04 - 0.16 * t, -0.13 + 0.36 * t, 0], (t) => 0.13 - 0.02 * t, 8, 12));
+    // クラウン：2列の柄の付け根をまとめる小さな台（切り口は黒っぽい）
+    stalks.push(buildTube((t) => [0.03 - 0.12 * t, -0.08 + 0.66 * t, 0], () => 0.1, 8, 12));
+    stalks.push(buildTube((t) => [-0.06 - 0.12 * t, 0.06 + 0.42 * t, 0], () => 0.085, 6, 10));
     const body = mergeMeshes(bodies);
     const extras = mergeMeshes(stalks);
-    paint(extras, (p) => mix([0.45, 0.55, 0.15], [0.32, 0.28, 0.12], clamp01(Math.hypot(p[0], p[2]) < 0.2 ? 1 : 0.2)));
+    paint(extras, (p) => {
+      const d = Math.hypot(p[0], p[2]);
+      let c: Vec3 = mix([0.36, 0.28, 0.12], [0.5, 0.62, 0.18], smooth(0.12, 0.4, d));
+      c = mix(c, [0.2, 0.14, 0.08], smooth(-0.05, -0.2, p[0]) * 0.8); // クラウンの切り口
+      return c;
+    });
 
     const flesh = (x: number, y: number, z: number): Vec3 => {
       let best: ReturnType<typeof localInfo> | null = null;

@@ -27,27 +27,29 @@ export const peach: FruitDef = {
   capRoughness: 0.35,
   glow: 0xff9ab4,
   palette: [0xff8aa8, 0xffd6c0, 0xffb070, 0x7ccf6a],
-  initialRotation: [0.25, -1.45, 0.05],
+  initialRotation: [-0.3, -1.5, 0.05],
   sound: 'soft',
   build(q = 1) {
-    // 縫合線は φ = 0 の子午線に沿って、軸からお尻まで片側に走る（φ = 0 までの角度）
-    const suture = (ph: number) => Math.abs(Math.atan2(Math.sin(ph), Math.cos(ph)));
+    // 縫合線は正面（+x）を軸から底まで走り、下へ行くほど深く広くなって、底でお尻のように左右（±z）に割れる。
+    // 溝は「縫合線を含む平面（z = 0）からの距離」で決めるので、底の極でも形が乱れない。
     const shape = new StarShape(
       (dx, dy, dz) => {
         const th = Math.acos(Math.max(-1, Math.min(1, dy)));
-        const ph = Math.atan2(dz, dx);
-        const s = Math.sin(th);
         let r = 1;
-        r -= 0.06 * Math.exp(-((suture(ph) / 0.14) ** 2)) * s; // 縫合線
+        const front = smooth(-0.55, 0.25, dx - 0.9 * dy); // 正面と底で溝が出る
+        const depth = 0.035 + 0.12 * smooth(0.25, -0.85, dy); // 下ほど深い
+        const width = 0.1 + 0.1 * smooth(0.1, -0.9, dy); // 下ほど広い
+        r -= depth * Math.exp(-((dz / width) ** 2)) * front; // 縫合線とお尻の割れ目
+        r += 0.06 * smooth(0.45, -0.65, dy) * (1 - Math.exp(-((dz / 0.4) ** 2))); // 左右のほっぺが丸く張る
+        r -= 0.09 * (dy * dy * dy - 0.6 * dy); // 下がふっくら、肩は少し細い
         r -= 0.12 * Math.exp(-((th / 0.3) ** 2)); // 軸のくぼみ
-        r += 0.06 * Math.exp(-(((Math.PI - th) / 0.16) ** 2)); // お尻の先
-        // 片方のほっぺが大きい
-        const t = dx * 0.35 + dz * 0.94;
-        r += 0.14 * (t * t * t - 0.6 * t) * s;
-        r += 0.03 * dy * Math.cos(ph - 1.2) * s;
+        r += 0.02 * Math.exp(-(((Math.PI - th) / 0.12) ** 2)); // 割れ目の奥の小さな先
+        // 片方のほっぺが少し大きい
+        const t = dx * 0.3 + dz * 0.95;
+        r += 0.1 * (t * t * t - 0.6 * t) * Math.sin(th);
         return r;
       },
-      mul3(rotZ3(-0.06), scale3(1, 1.02, 0.95)),
+      mul3(rotZ3(-0.05), scale3(1, 0.97, 0.98)),
     );
     const body = shape.build(144 * q, 96 * q);
     paint(body, (p) => {
