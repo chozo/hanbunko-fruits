@@ -13,7 +13,7 @@
     <div id="app">
       <header id="hud">
         <div class="hud-left">
-          <div id="stage-label">STAGE 1 / 7</div>
+          <div id="stage-label">STAGE 1 / 10</div>
           <div id="fruit-name">りんご</div>
         </div>
         <div id="progress" aria-label="進み具合"></div>
@@ -77,7 +77,7 @@
             </svg>
           </div>
           <h1>りんご、<br />ひと切り半分こ</h1>
-          <p class="lead">果物をよく見て、<b>体積をぴったり半分</b>に。<br />7種類の果物を一刀で切り分けよう。</p>
+          <p class="lead">果物をよく見て、<b>体積をぴったり半分</b>に。<br /><span id="fruit-count">10</span>種類の果物を一刀で切り分けよう。</p>
           <ol class="howto">
             <li><span class="num">1</span><span>下の<b>回転パッド</b>をドラッグして、果物を好きな向きに回す</span></li>
             <li><span class="num">2</span><span>果物の<b>外から外へ</b>、横切るようにスワイプして切る</span></li>
@@ -91,7 +91,7 @@
       <div id="clear-screen" class="overlay" hidden>
         <div class="overlay-inner">
           <div class="clear-badge">ALL CLEAR</div>
-          <h2>全7種類、半分こ達成！</h2>
+          <h2>全<span id="clear-count">10</span>種類、半分こ達成！</h2>
           <table id="clear-table"></table>
           <p id="clear-total"></p>
           <button id="again-btn" class="main-btn big">最初から遊ぶ</button>

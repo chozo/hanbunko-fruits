@@ -289,3 +289,27 @@ export function rotZ3(a: number): number[] {
 export function scale3(x: number, y: number, z: number): number[] {
   return [x, 0, 0, 0, y, 0, 0, 0, z];
 }
+
+/** メッシュを 3x3 行列（行優先）と平行移動で変換する（法線は逆転置で変換） */
+export function transformMesh(mesh: MeshData, m: number[], offset: Vec3 = [0, 0, 0]): MeshData {
+  const p = mesh.positions, n = mesh.normals;
+  const inv = invert3(m);
+  const out: MeshData = { positions: new Float32Array(p.length), normals: new Float32Array(n.length), colors: mesh.colors.slice(), indices: mesh.indices.slice() };
+  for (let i = 0; i < p.length; i += 3) {
+    const x = p[i], y = p[i + 1], z = p[i + 2];
+    out.positions[i] = m[0] * x + m[1] * y + m[2] * z + offset[0];
+    out.positions[i + 1] = m[3] * x + m[4] * y + m[5] * z + offset[1];
+    out.positions[i + 2] = m[6] * x + m[7] * y + m[8] * z + offset[2];
+    const nx = n[i], ny = n[i + 1], nz = n[i + 2];
+    // (M^-1)^T · n
+    const tx = inv[0] * nx + inv[3] * ny + inv[6] * nz;
+    const ty = inv[1] * nx + inv[4] * ny + inv[7] * nz;
+    const tz = inv[2] * nx + inv[5] * ny + inv[8] * nz;
+    const l = Math.hypot(tx, ty, tz) || 1;
+    out.normals[i] = tx / l;
+    out.normals[i + 1] = ty / l;
+    out.normals[i + 2] = tz / l;
+  }
+  if (signedVolume(out) < 0) flipWinding(out);
+  return out;
+}

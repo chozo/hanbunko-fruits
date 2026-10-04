@@ -93,7 +93,8 @@ const g = (page, expr) => page.evaluate(expr);
   await page.click('#start-btn');
   await wait(page, 800);
   await g(page, '__game.config.judge.thresholdPt = 50');
-  for (let i = 0; i < 7; i++) {
+  const n = await g(page, 'document.querySelectorAll("#progress .dot").length');
+  for (let i = 0; i < n; i++) {
     await g(page, '(()=>{const s=__game.size; __game.cut(s.width*0.45, 3, s.width*0.55, s.height-3)})()');
     await wait(page, 2400);
     const ok = (await g(page, '__game.state')) === 'result' && (await g(page, '__game.judgement.success'));
@@ -103,7 +104,7 @@ const g = (page, expr) => page.evaluate(expr);
     await page.click('#next-btn');
     await wait(page, 900);
   }
-  check('全7ステージ成功でクリア画面', (await g(page, '__game.state')) === 'clear' && !(await page.isHidden('#clear-screen')));
+  check(`全${n}ステージ成功でクリア画面`, (await g(page, '__game.state')) === 'clear' && !(await page.isHidden('#clear-screen')));
   await page.click('#again-btn');
   await wait(page, 800);
   check('最初から再プレイ', (await g(page, '__game.state')) === 'aim' && (await g(page, '__game.stage')) === 0);

@@ -1,7 +1,8 @@
-import { buildRings, buildTube, paint, type Vec3 } from '../geometry/mesh';
+import { buildRings, buildTube, invert3, mergeMeshes, mul3, paint, rotY3, rotZ3, scale3, transformMesh, type MeshData, type Vec3 } from '../geometry/mesh';
 import { clamp01, fbm, mix, smooth, type FruitDef } from './common';
 
-// バナナ：円弧に沿った五角形断面のチューブ。軸（柄）は体積から除外する。
+// バナナ（1房・5本）：1本は円弧に沿った五角形断面のチューブ。5本を房の付け根（クラウン）から扇形に並べる。
+// 体積は5本の合計で、柄とクラウンは体積から除外する。
 // 中心線は xy 平面上の円弧（中心 O=(0, RC)）。断面は円弧に垂直な平面上にあるので、
 // 任意の点から「円弧上の位置」と「断面内の位置」を逆算でき、断面の模様が形と一致する。
 
@@ -28,9 +29,108 @@ function frame(a: number): { c: Vec3; er: Vec3 } {
   return { c: [RC * er[0], RC + RC * er[1], 0], er };
 }
 
+/** 1本のバナナの局所座標での位置情報（s: 中心 0・表面 1 の正規化深さ） */
+function localInfo(x: number, y: number, z: number) {
+  const a = Math.atan2(x, RC - y);
+  const u = (a - A0) / (A1 - A0);
+  const f = frame(Math.min(A1, Math.max(A0, a)));
+  const w = (x - f.c[0]) * f.er[0] + (y - f.c[1]) * f.er[1];
+  const rho = Math.hypot(w, z);
+  const psi = Math.atan2(z, w);
+  const R = u <= 0 || u >= 1 ? 1e-6 : tubeRadius(u, psi);
+  return { s: rho / R, u, psi, rho };
+}
+
+function localFlesh(info: ReturnType<typeof localInfo>, x: number, y: number, z: number): Vec3 {
+  const { s, u, psi, rho } = info;
+  if (s > 0.96) return u > 0.97 ? [0.3, 0.2, 0.1] : [0.95, 0.78, 0.15];
+  if (s > 0.84) return mix([0.96, 0.92, 0.72], [0.92, 0.86, 0.6], smooth(0.84, 0.96, s));
+  let c: Vec3 = mix([1.0, 0.97, 0.84], [0.98, 0.93, 0.74], smooth(0.2, 0.84, s));
+  c = mix(c, [0.97, 0.92, 0.75], 0.2 * fbm(x * 12, y * 12, z * 12));
+  // 中心の三つ割れの筋と小さな黒い種
+  const rr = rho / profile(clamp01(u));
+  if (rr < 0.32) {
+    for (let k = 0; k < 3; k++) {
+      const b = (k / 3) * Math.PI * 2 + 0.5;
+      if (Math.abs(rr * Math.sin(psi - b)) < 0.025 && Math.cos(psi - b) > 0) c = mix(c, [0.93, 0.86, 0.66], 0.7);
+      const sx = 0.13 * Math.cos(b + Math.PI / 3), sz = 0.13 * Math.sin(b + Math.PI / 3);
+      if (Math.hypot(rr * Math.cos(psi) - sx, rr * Math.sin(psi) - sz) < 0.045) c = [0.3, 0.22, 0.15];
+    }
+  }
+  return c;
+}
+
+function buildOne(q: number, greenish: number): MeshData {
+  const nR = 110 * q, nS = 48 * q;
+  const uAt = (t: number) => (1 - Math.cos(Math.PI * t)) / 2;
+  const body = buildRings(
+    nR,
+    nS,
+    (i, j) => {
+      const u = uAt((i + 1) / (nR + 1));
+      const a = A0 + (A1 - A0) * u;
+      const psi = (j / nS) * Math.PI * 2;
+      const f = frame(a);
+      const r = tubeRadius(u, psi);
+      return [f.c[0] + f.er[0] * r * Math.cos(psi), f.c[1] + f.er[1] * r * Math.cos(psi), r * Math.sin(psi)];
+    },
+    frame(A0).c,
+    frame(A1).c,
+  );
+  paint(body, (p) => {
+    const a = Math.atan2(p[0], RC - p[1]);
+    const u = clamp01((a - A0) / (A1 - A0));
+    let c: Vec3 = mix([0.98, 0.82, 0.16], [0.92, 0.72, 0.1], fbm(p[0] * 3 + greenish * 9, p[1] * 3, p[2] * 3));
+    c = mix(c, [0.55, 0.65, 0.15], smooth(0.2 + greenish * 0.1, 0.02, u) * 0.85);
+    c = mix(c, [0.25, 0.17, 0.08], smooth(0.965, 0.995, u));
+    // 稜線を少し濃く
+    const f = frame(a);
+    const w = (p[0] - f.c[0]) * f.er[0] + (p[1] - f.c[1]) * f.er[1];
+    const psi = Math.atan2(p[2], w);
+    c = mix(c, [0.8, 0.62, 0.1], 0.35 * Math.max(0, Math.cos(5 * psi + 0.4)) ** 8);
+    return c;
+  });
+  return body;
+}
+
+/** 房の付け根（クラウン）の局所座標。各バナナの柄をのばした先にある */
+const S0 = frame(A0).c;
+const STALK: Vec3 = [-Math.cos(A0), -Math.sin(A0), 0];
+const LS = 0.65;
+const CROWN: Vec3 = [S0[0] + STALK[0] * LS, S0[1] + STALK[1] * LS, 0];
+
+/** 5本の配置：クラウンを通る縦軸のまわりに扇形に回し、高さを互い違いにずらす */
+export function bunchLayout() {
+  const theta = [-1.00, -0.50, 0, 0.50, 1.00];
+  const lift = [-0.1, 0.1, -0.1, 0.1, -0.1];
+  const size = [0.94, 0.98, 1.0, 0.97, 0.93];
+  const tilt = [0.05, -0.02, 0, 0.03, -0.05];
+  return theta.map((t, k) => {
+    const m = mul3(rotY3(t), mul3(rotZ3(tilt[k]), scale3(size[k], size[k], size[k])));
+    const inv = invert3(m);
+    const off: Vec3 = [0, lift[k], 0];
+    const toWorld = (p: Vec3): Vec3 => {
+      const x = p[0] - CROWN[0], y = p[1] - CROWN[1], z = p[2] - CROWN[2];
+      return [m[0] * x + m[1] * y + m[2] * z + off[0], m[3] * x + m[4] * y + m[5] * z + off[1], m[6] * x + m[7] * y + m[8] * z + off[2]];
+    };
+    const toLocal = (x: number, y: number, z: number): Vec3 => {
+      x -= off[0];
+      y -= off[1];
+      z -= off[2];
+      return [inv[0] * x + inv[1] * y + inv[2] * z + CROWN[0], inv[3] * x + inv[4] * y + inv[5] * z + CROWN[1], inv[6] * x + inv[7] * y + inv[8] * z + CROWN[2]];
+    };
+    return { m, off, toWorld, toLocal };
+  });
+}
+
+/** 1本のバナナの正規化深さ（テスト用：重なりの確認） */
+export function bananaDepthLocal(x: number, y: number, z: number): number {
+  return localInfo(x, y, z).s;
+}
+
 export const banana: FruitDef = {
   id: 'banana',
-  name: 'バナナ',
+  name: 'バナナ（1房）',
   skin: {
     roughness: 0.5,
     clearcoat: 0.25,
@@ -49,78 +149,45 @@ export const banana: FruitDef = {
   capRoughness: 0.45,
   glow: 0xfff070,
   palette: [0xffe14a, 0xfff6c0, 0xffb84a, 0x9ad04a],
-  initialRotation: [0.35, -0.3, 0.12],
+  initialRotation: [0.55, -0.6, 0.1],
   sound: 'soft',
   build(q = 1) {
-    const nR = 130 * q, nS = 64 * q;
-    const uAt = (t: number) => (1 - Math.cos(Math.PI * t)) / 2;
-    const body = buildRings(
-      nR,
-      nS,
-      (i, j) => {
-        const u = uAt((i + 1) / (nR + 1));
-        const a = A0 + (A1 - A0) * u;
-        const psi = (j / nS) * Math.PI * 2;
-        const f = frame(a);
-        const r = tubeRadius(u, psi);
-        return [f.c[0] + f.er[0] * r * Math.cos(psi), f.c[1] + f.er[1] * r * Math.cos(psi), r * Math.sin(psi)];
-      },
-      frame(A0).c,
-      frame(A1).c,
-    );
-    paint(body, (p) => {
-      const a = Math.atan2(p[0], RC - p[1]);
-      const u = clamp01((a - A0) / (A1 - A0));
-      let c: Vec3 = mix([0.98, 0.82, 0.16], [0.92, 0.72, 0.1], fbm(p[0] * 3, p[1] * 3, p[2] * 3));
-      c = mix(c, [0.55, 0.65, 0.15], smooth(0.2, 0.02, u) * 0.85);
-      c = mix(c, [0.25, 0.17, 0.08], smooth(0.965, 0.995, u));
-      // 稜線を少し濃く
-      const f = frame(a);
-      const w = (p[0] - f.c[0]) * f.er[0] + (p[1] - f.c[1]) * f.er[1];
-      const psi = Math.atan2(p[2], w);
-      c = mix(c, [0.8, 0.62, 0.1], 0.35 * Math.max(0, Math.cos(5 * psi + 0.4)) ** 8);
-      return c;
+    const layout = bunchLayout();
+    const bodies: MeshData[] = [];
+    const stalks: MeshData[] = [];
+    layout.forEach((L, k) => {
+      const shift: Vec3 = [-L.m[0] * CROWN[0] - L.m[1] * CROWN[1] - L.m[2] * CROWN[2] + L.off[0], -L.m[3] * CROWN[0] - L.m[4] * CROWN[1] - L.m[5] * CROWN[2] + L.off[1], -L.m[6] * CROWN[0] - L.m[7] * CROWN[1] - L.m[8] * CROWN[2] + L.off[2]];
+      bodies.push(transformMesh(buildOne(q, (k * 0.37) % 1), L.m, shift));
+      // 柄：クラウンからバナナの柄の側の端（少し内側）まで
+      const st = buildTube(
+        (t) => {
+          const d = LS * (1 - t * 1.12);
+          return [S0[0] + STALK[0] * d, S0[1] + STALK[1] * d, 0];
+        },
+        (t) => 0.075 - 0.012 * t,
+        8,
+        8,
+      );
+      stalks.push(transformMesh(st, L.m, shift));
     });
-
-    // 柄：柄の側の端から接線方向へ伸びる
-    const f0 = frame(A0);
-    const tan: Vec3 = [Math.cos(A0), Math.sin(A0), 0];
-    const stalk = buildTube(
-      (t) => {
-        const d = -0.06 + 0.42 * t;
-        return [f0.c[0] - tan[0] * d, f0.c[1] - tan[1] * d + 0.05 * t * t, 0];
-      },
-      (t) => 0.075 - 0.015 * t,
-      10,
-      8,
-    );
-    paint(stalk, (p) => mix([0.45, 0.55, 0.15], [0.3, 0.25, 0.1], clamp01((f0.c[0] - p[0]) / 0.4)));
+    stalks.push(buildTube((t) => [0.04 - 0.16 * t, -0.13 + 0.36 * t, 0], (t) => 0.13 - 0.02 * t, 8, 12));
+    const body = mergeMeshes(bodies);
+    const extras = mergeMeshes(stalks);
+    paint(extras, (p) => mix([0.45, 0.55, 0.15], [0.32, 0.28, 0.12], clamp01(Math.hypot(p[0], p[2]) < 0.2 ? 1 : 0.2)));
 
     const flesh = (x: number, y: number, z: number): Vec3 => {
-      const a = Math.atan2(x, RC - y);
-      const u = (a - A0) / (A1 - A0);
-      const f = frame(Math.min(A1, Math.max(A0, a)));
-      const w = (x - f.c[0]) * f.er[0] + (y - f.c[1]) * f.er[1];
-      const rho = Math.hypot(w, z);
-      const psi = Math.atan2(z, w);
-      const R = u <= 0 || u >= 1 ? 1e-6 : tubeRadius(u, psi);
-      const s = rho / R;
-      if (s > 0.96) return u > 0.97 ? [0.3, 0.2, 0.1] : [0.95, 0.78, 0.15];
-      if (s > 0.84) return mix([0.96, 0.92, 0.72], [0.92, 0.86, 0.6], smooth(0.84, 0.96, s));
-      let c: Vec3 = mix([1.0, 0.97, 0.84], [0.98, 0.93, 0.74], smooth(0.2, 0.84, s));
-      c = mix(c, [0.97, 0.92, 0.75], 0.2 * fbm(x * 12, y * 12, z * 12));
-      // 中心の三つ割れの筋と小さな黒い種
-      const rr = rho / profile(clamp01(u));
-      if (rr < 0.32) {
-        for (let k = 0; k < 3; k++) {
-          const b = (k / 3) * Math.PI * 2 + 0.5;
-          if (Math.abs(rr * Math.sin(psi - b)) < 0.025 && Math.cos(psi - b) > 0) c = mix(c, [0.93, 0.86, 0.66], 0.7);
-          const sx = 0.13 * Math.cos(b + Math.PI / 3), sz = 0.13 * Math.sin(b + Math.PI / 3);
-          if (Math.hypot(rr * Math.cos(psi) - sx, rr * Math.sin(psi) - sz) < 0.045) c = [0.3, 0.22, 0.15];
+      let best: ReturnType<typeof localInfo> | null = null;
+      let bp: Vec3 = [0, 0, 0];
+      for (const L of layout) {
+        const lp = L.toLocal(x, y, z);
+        const info = localInfo(lp[0], lp[1], lp[2]);
+        if (!best || info.s < best.s) {
+          best = info;
+          bp = lp;
         }
       }
-      return c;
+      return localFlesh(best!, bp[0], bp[1], bp[2]);
     };
-    return { body, extras: stalk, flesh, extrasCapColor: [0.85, 0.85, 0.62] };
+    return { body, extras, flesh, extrasCapColor: [0.85, 0.85, 0.62] };
   },
 };

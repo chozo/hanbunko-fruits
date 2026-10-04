@@ -91,3 +91,34 @@ describe('ぶどう：切れていない粒も体積に含まれる', () => {
     }
   });
 });
+
+describe('複数の物体からなる果物は重ならない（合計体積が二重に数えられない）', () => {
+  it('バナナ5本：どのバナナの表面も、ほかのバナナの外側にある', async () => {
+    const { bunchLayout, bananaDepthLocal } = await import('../src/fruits/banana');
+    const layout = bunchLayout();
+    const model = FRUITS.find((f) => f.id === 'banana')!.build(1);
+    const p = model.body.positions;
+    const per = p.length / 3 / layout.length;
+    let minDepth = Infinity;
+    for (let i = 0; i < p.length / 3; i++) {
+      const own = Math.floor(i / per);
+      layout.forEach((L, k) => {
+        if (k === own) return;
+        const lp = L.toLocal(p[i * 3], p[i * 3 + 1], p[i * 3 + 2]);
+        minDepth = Math.min(minDepth, bananaDepthLocal(lp[0], lp[1], lp[2]));
+      });
+    }
+    console.log(`バナナ：ほかのバナナに対する最小の正規化深さ ${minDepth.toFixed(3)}（1 より大きければ重なりなし）`);
+    expect(minDepth).toBeGreaterThan(1.0);
+  });
+
+  it('さくらんぼ2粒：互いの外側にある', async () => {
+    const { cherryShapes } = await import('../src/fruits/cherries');
+    const [a, b] = cherryShapes();
+    const ma = a.build(96, 64);
+    let minDepth = Infinity;
+    for (let i = 0; i < ma.positions.length; i += 3) minDepth = Math.min(minDepth, b.depth(ma.positions[i], ma.positions[i + 1], ma.positions[i + 2]));
+    console.log(`さくらんぼ：最小の正規化深さ ${minDepth.toFixed(3)}`);
+    expect(minDepth).toBeGreaterThan(1.0);
+  });
+});

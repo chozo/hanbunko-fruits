@@ -29,6 +29,8 @@ const retryBtn = $<HTMLButtonElement>('retry-btn');
 
 const sfx = new Sfx();
 muteBtn.classList.toggle('muted', sfx.muted);
+$('fruit-count').textContent = String(FRUITS.length);
+$('clear-count').textContent = String(FRUITS.length);
 $('howto-thr').textContent = `50:50 ±${CONFIG.judge.thresholdPt.toFixed(CONFIG.judge.displayDecimals)}pt`;
 
 let view: View;
