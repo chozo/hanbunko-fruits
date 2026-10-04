@@ -88,6 +88,15 @@ export interface CutOutcome {
   /** 切断時点のローカル→ワールド行列 */
   baseMatrix: Matrix4;
   capCenterWorld: Vector3;
+  /** かけらの開き方（最初の配置時に一度だけ計算） */
+  layout?: PieceLayout;
+}
+
+interface PieceLayout {
+  axis: Vector3;
+  pivot: Vector3;
+  /** それぞれのかけらを平面から押し離す距離 */
+  push: [number, number];
 }
 
 export class FruitObject {
@@ -219,25 +228,91 @@ export class FruitObject {
     return this.outcome;
   }
 
-  /** かけらを離して断面を見せる。progress は 0..1 */
+  /**
+   * かけらを離して断面を見せる。progress は 0..1。
+   * 断面がカメラへ向くように傾けるとき、回転の軸を「断面のいちばん奥の点」に置く（本を奥側を綴じ目にして開く形）。
+   * さらに、傾けたあとのかけらが切断平面をまたがないよう実際の頂点で測り、すき間が必ず空くだけ押し離す。
+   * これで奥でつながって見えることがなく、2つのかけらは完全に分かれる。
+   */
   layoutPieces(progress: number, cameraPos: Vector3): void {
     const o = this.outcome;
     if (!o) return;
+    const L = (o.layout ??= this.computeLayout(o, cameraPos));
+    const n = o.worldPlane.normal;
+    o.pieces.forEach((pc, i) => {
+      const d = L.push[i] * progress;
+      const t = new Matrix4().makeTranslation(n.x * pc.side * d, n.y * pc.side * d, n.z * pc.side * d);
+      pc.group.matrix.copy(t).multiply(this.hinge(L, pc.side, progress)).multiply(o.baseMatrix);
+      pc.group.matrixWorldNeedsUpdate = true;
+    });
+  }
+
+  private hinge(L: PieceLayout, side: number, progress: number): Matrix4 {
+    const p = L.pivot;
+    return new Matrix4()
+      .makeTranslation(p.x, p.y, p.z)
+      .multiply(new Matrix4().makeRotationAxis(L.axis, side * CONFIG.fx.openAngle * progress))
+      .multiply(new Matrix4().makeTranslation(-p.x, -p.y, -p.z));
+  }
+
+  private computeLayout(o: CutOutcome, cameraPos: Vector3): PieceLayout {
     const n = o.worldPlane.normal;
     const vdir = o.capCenterWorld.clone().sub(cameraPos).normalize();
     const axis = new Vector3().crossVectors(n, vdir);
     if (axis.lengthSq() < 1e-8) axis.set(0, 1, 0);
     axis.normalize();
-    for (const pc of o.pieces) {
-      const pivot = pc.centroidLocal.clone().applyMatrix4(o.baseMatrix);
-      const t = new Matrix4().makeTranslation(n.x * pc.side * CONFIG.fx.separateGap * progress, n.y * pc.side * CONFIG.fx.separateGap * progress, n.z * pc.side * CONFIG.fx.separateGap * progress);
-      const r = new Matrix4()
-        .makeTranslation(pivot.x, pivot.y, pivot.z)
-        .multiply(new Matrix4().makeRotationAxis(axis, pc.side * CONFIG.fx.openAngle * progress))
-        .multiply(new Matrix4().makeTranslation(-pivot.x, -pivot.y, -pivot.z));
-      pc.group.matrix.copy(t).multiply(r).multiply(o.baseMatrix);
-      pc.group.matrixWorldNeedsUpdate = true;
+    // 断面のいちばん奥（カメラから遠い）の点を綴じ目にする
+    const pivot = o.capCenterWorld.clone();
+    let far = -Infinity;
+    const cp = o.result.pos.cap.positions;
+    const v = new Vector3();
+    for (let i = 0; i < cp.length; i += 3) {
+      v.set(cp[i], cp[i + 1], cp[i + 2]).applyMatrix4(o.baseMatrix);
+      const dd = v.dot(vdir);
+      if (dd > far) {
+        far = dd;
+        pivot.copy(v);
+      }
     }
+    const L: PieceLayout = { axis, pivot, push: [0, 0] };
+    // 傾けきった状態で、かけら（枝やヘタも含む）が平面の反対側へどれだけはみ出すかを測る
+    const half = CONFIG.fx.separateGap / 2;
+    o.pieces.forEach((pc, i) => {
+      const m = this.hinge(L, pc.side, 1).multiply(o.baseMatrix);
+      let minDist = Infinity;
+      pc.group.traverse((obj) => {
+        const g = (obj as Mesh).geometry as BufferGeometry | undefined;
+        if (!g) return;
+        const pos = g.getAttribute('position');
+        for (let k = 0; k < pos.count; k++) {
+          v.fromBufferAttribute(pos, k).applyMatrix4(m);
+          minDist = Math.min(minDist, pc.side * o.worldPlane.distanceToPoint(v));
+        }
+      });
+      L.push[i] = Math.max(0, half - (Number.isFinite(minDist) ? minDist : 0));
+    });
+    return L;
+  }
+
+  /** 今の配置での、かけら同士の最小すき間（各かけらの頂点と切断平面の距離の和の最小値。正なら完全に分かれている） */
+  separation(): number {
+    const o = this.outcome;
+    if (!o) return NaN;
+    const v = new Vector3();
+    const mins = o.pieces.map((pc) => {
+      let m = Infinity;
+      pc.group.traverse((obj) => {
+        const g = (obj as Mesh).geometry as BufferGeometry | undefined;
+        if (!g) return;
+        const pos = g.getAttribute('position');
+        for (let k = 0; k < pos.count; k++) {
+          v.fromBufferAttribute(pos, k).applyMatrix4(pc.group.matrix);
+          m = Math.min(m, pc.side * o.worldPlane.distanceToPoint(v));
+        }
+      });
+      return m;
+    });
+    return mins[0] + mins[1];
   }
 
   pieceWorldCenter(pc: Piece): Vector3 {

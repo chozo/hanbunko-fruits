@@ -100,6 +100,8 @@ const g = (page, expr) => page.evaluate(expr);
     const ok = (await g(page, '__game.state')) === 'result' && (await g(page, '__game.judgement.success'));
     const v = await g(page, '__game.verify()');
     check(`ステージ${i + 1} 成功と検算`, ok && v.diffPt < 1e-6, `ループ数 ${v.capLoops}`);
+    const gap = await g(page, '__game.separation()');
+    check(`ステージ${i + 1} かけらが完全に分かれている`, gap > 0.2, `最小すき間 ${gap.toFixed(3)}`);
     await wait(page, 900);
     await page.click('#next-btn');
     await wait(page, 900);

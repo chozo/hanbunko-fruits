@@ -667,6 +667,8 @@ window.__game = {
   },
   /** 直近の切断を、独立した計算（ワールド座標で三角形を切り取る）で検算する */
   verify: () => (run && fruit ? worldVolumeCheck(fruit, run.outcome, run.first, run.S, run.E, view) : null),
+  /** 切ったかけら同士の最小すき間（正なら完全に分離） */
+  separation: () => fruit?.separation() ?? null,
   stats: () => stats.map((s) => ({ ...s })),
   config: CONFIG,
 };
