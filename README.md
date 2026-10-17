@@ -18,6 +18,7 @@ npm run preview    # ビルド結果の確認
 npm test           # 単体テスト（体積計算・切断・判定）
 npm run e2e -- http://localhost:5173/   # ブラウザでの動作確認（dev か preview を起動した状態で）
 npm run deploy     # ビルドして Cloudflare Workers へデプロイ
+npm run ogp        # SNS共有用の OGP 画像 public/ogp.png（1200×630）を作り直す
 ```
 
 ## 公開
@@ -153,6 +154,8 @@ tests/                単体テスト（vitest）
 tools/e2e.mjs         ブラウザでの動作確認（playwright-core + インストール済みの Chrome）
 tools/shot.mjs        開発用のスクリーンショット撮影
 tools/promo/          告知動画の台本・撮影・書き出し（出力は ../video/）
+tools/ogp/            OGP 画像の生成（スイカを 50.1:49.9 に切った場面を撮り、タイトル・遊び方・URL と並べる）
+public/               公開ルートにそのまま置くファイル（favicon.svg・ogp.png）
 wrangler.jsonc        Cloudflare Workers の公開設定
 LICENSE               MIT License
 ```
